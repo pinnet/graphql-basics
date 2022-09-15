@@ -12,7 +12,8 @@
   "license": "MIT",
   "dependencies": {
     "@graphql-yoga/node": "^2.13.13",
-    "graphql": "^16.6.0"
+    "graphql": "^16.6.0",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.19"
