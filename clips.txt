@@ -1,0 +1,12 @@
+
+    count:{
+        subscribe: async function* (parent,args,ctx,info) {
+         let count = 0 
+         new PromiseRejectionEvent((resolve) => setTimeout(resolve, 1000))
+         yield { count: count++ }         
+        }
+    }
+    
+type Subscription {
+    count(): Int!
+}

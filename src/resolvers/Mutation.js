@@ -40,7 +40,7 @@ const Mutation = {
     },
 
     //------------------------------------------------------------------------------------------- Posts
-    createPost(parent,args,{ db },info){
+    createPost(parent,args,{ db,pubSub },info){
         const userExists = db.users.some((user) => user.id === args.data.author)
         if (!userExists){ throw new GraphQLYogaError('User does not exist',{ code: 'USER_UNKNOWN' }) }
         const post = {
@@ -48,46 +48,65 @@ const Mutation = {
             ...args.data
         }
         db.posts.push(post)
+        if (post.published){ pubSub.publish('post',{ mutation: 'CREATED',data: post}) }
         return post
     },
-    deletePost(parent,args,{ db },info){
+    deletePost(parent,args,{ db, pubSub },info){
         const postIndex = db.posts.findIndex((post) => post.id === args.id )
         if(postIndex === -1){ throw new GraphQLYogaError('Post does not exist.',{ code: 'POST_UNKNOWN' }) }
-        const deletedPost = db.posts.splice(postIndex,1)
+        const [post] = db.posts.splice(postIndex,1)
         db.comments = db.comments.filter((comment) => comment.post != args.id)
-        return deletedPost[0]
+        if (post.published){ pubSub.publish('post',{mutation: 'DELETED', data: post })}
+        return post
     },
-    updatePost(parent,{ id,data },{ db },info){
+    updatePost(parent,{ id,data },{ db,pubSub },info){
         const post = db.posts.find((post) => post.id === id )
+        const originalPost = { ...post }
         if(!post){ throw new GraphQLYogaError('Post does not exist.',{ code: 'POST_UNKNOWN' }) }
         if (typeof data.title === 'string'){ post.title = data.title }
         if (typeof data.body === 'string' ){ post.body = data.body }
-        if (typeof data.published === 'boolean'){ post.published = data.published }
+        if (typeof data.published === 'boolean'){ 
+            post.published = data.published
+
+            if (originalPost.published && !data.published){
+                pubSub.publish('post',{mutation: 'DELETED', data: originalPost })
+            }
+            else if (!originalPost.published && data.published){
+                pubSub.publish('post',{mutation: 'CREATED', data: post })
+            }
+        } 
+        else if(post.published){
+            pubSub.publish('post',{mutation: 'UPDATED', data: post })
+        }
         return post 
     },
     //--------------------------------------------------------------------------------------  Comments
 
-    createComment(parent,args,{ db },info){
-        const userExists = db.users.some((user) => user.id === args.data.author)
+    createComment(parent,{ data },{ db, pubSub },info){
+        const userExists = db.users.some((user) => user.id === data.author)
         if (!userExists){ throw new GraphQLYogaError('User does not exist',{ code: 'USER_UNKNOWN' }) }
-        const postExists = db.posts.some((post) => post.id === args.data.post && post.published)
+        const postExists = db.posts.some((post) => post.id === data.post && post.published)
         if (!postExists){ throw new GraphQLYogaError('Post does not exist',{ code: 'POST_UNKNOWN' }) }
         const comment = {
             id:uuidv4(),
-            ...args.data
+            ...data
         }
         db.comments.push(comment)
+        pubSub.publish(`comment ${comment.post}`,{mutation: 'CREATED',data: comment})
         return comment
     },
-    deleteComment(parent,args,{ db },info){
-        const commentIndex = db.comments.findIndex((comment) => comment.id === args.id )
+    deleteComment(parent,{ id,data },{ db, pubSub },info){
+        const commentIndex = db.comments.findIndex((comment) => comment.id === id )
         if(commentIndex === -1){ throw new GraphQLYogaError('Comment does not exist.',{ code: 'COMMENT_UNKNOWN' }) }
-        return db.comments.splice(commentIndex,1)[0]
+        const [comment] = db.comments.splice(commentIndex,1)
+        pubSub.publish(`comment ${comment.post}`,{mutation: 'DELETED',data: comment})
+        return comment
     },
-    updateComment(parent,{ id,data },{ db },info){
+    updateComment(parent,{ id,data },{ db, pubSub },info){
         const comment = db.comments.find((comment) => comment.id === id )
         if(!comment){ throw new GraphQLYogaError('Comment does not exist.',{ code: 'COMMENT_UNKNOWN' }) }
         if (typeof data.text === 'string'){ comment.text = data.text  }
+        pubSub.publish(`comment ${comment.post}`,{mutation: 'UPDATED',data: comment})
         return comment
     },
 }
